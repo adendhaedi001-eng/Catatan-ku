@@ -1,0 +1,6 @@
+{
+  "name": "Catatan Keuangan 4U",
+  "description": "Aplikasi pengelolaan keuangan harian dan iuran siswa dengan backup otomatis serta integrasi Google Drive.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
