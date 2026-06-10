@@ -26,6 +26,7 @@ import {
 } from './utils';
 import { CatatanKeuangan } from './components/CatatanKeuangan';
 import { IuranSiswa } from './components/IuranSiswa';
+import AiRingkasan from './components/AiRingkasan';
 import { 
   User, 
   LogOut, 
@@ -35,13 +36,14 @@ import {
   BookOpen, 
   TrendingUp, 
   RefreshCw,
-  X
+  X,
+  Sparkles
 } from 'lucide-react';
 
 export default function App() {
   const [isPending, startTransition] = useTransition();
   // Active Tab/Subsystem
-  const [activeSystem, setActiveSystem] = useState<'finance' | 'iuran'>('finance');
+  const [activeSystem, setActiveSystem] = useState<'finance' | 'iuran' | 'ai'>('finance');
 
   // Master States
   const [finance, setFinance] = useState<FinanceData>(() => {
@@ -69,6 +71,43 @@ export default function App() {
   // Security configuration states
   const [securityPinRegister, setSecurityPinRegister] = useState<string>('');
   const [showSecurityModal, setShowSecurityModal] = useState<boolean>(false);
+
+  // Custom styled confirm and toast state (avoids iframe confirm() and alert() blocks)
+  const [appConfirm, setAppConfirm] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    confirmText?: string;
+    cancelText?: string;
+    type?: 'danger' | 'warning' | 'info' | 'success';
+  } | null>(null);
+
+  const [appToast, setAppToast] = useState<string | null>(null);
+
+  const showAppToast = (msg: string) => {
+    setAppToast(msg);
+    setTimeout(() => setAppToast(null), 3000);
+  };
+
+  const askAppConfirm = (
+    title: string,
+    message: string,
+    onConfirm: () => void,
+    confirmText: string = 'Ya',
+    type: 'danger' | 'warning' | 'info' | 'success' = 'danger',
+    cancelText: string = 'Batal'
+  ) => {
+    setAppConfirm({
+      isOpen: true,
+      title,
+      message,
+      onConfirm,
+      confirmText,
+      type,
+      cancelText
+    });
+  };
 
   // Sync Master State Save Helper
   const handleDataChange = (nextFd: FinanceData, nextId: IuranData) => {
@@ -222,12 +261,13 @@ export default function App() {
       };
       handleDataChange(nextF, iuran);
       setShowSecurityModal(false);
-      alert('Sandi/PIN Keamanan berhasil dinonaktifkan.');
+      showAppToast('Sandi/PIN Keamanan berhasil dinonaktifkan.');
       return;
     }
 
     if (securityPinRegister.length < 4 || securityPinRegister.length > 6) {
-      return alert('PIN harus berukuran 4 sampai 6 digit angka!');
+      showAppToast('PIN harus berukuran 4 sampai 6 digit angka!');
+      return;
     }
 
     const hashed = await sha256(securityPinRegister);
@@ -242,7 +282,7 @@ export default function App() {
     handleDataChange(nextF, iuran);
     setSecurityPinRegister('');
     setShowSecurityModal(false);
-    alert('Sandi/PIN Keamanan berhasil diaktifkan.');
+    showAppToast('Sandi/PIN Keamanan berhasil diaktifkan.');
   };
 
   // Google Sign In Trigger
@@ -252,11 +292,11 @@ export default function App() {
       if (res) {
         setGoogleUser(res.user);
         setGoogleToken(res.accessToken);
-        alert(`Berhasil masuk sebagai ${res.user.displayName}`);
+        showAppToast(`Berhasil masuk sebagai ${res.user.displayName}`);
         return res.accessToken;
       }
     } catch (err: any) {
-      alert(`Gagal masuk: ${err.message || err}`);
+      showAppToast(`Gagal masuk: ${err.message || err}`);
     }
     return null;
   };
@@ -274,43 +314,47 @@ export default function App() {
 
   const handleDeleteAccountData = async () => {
     if (!googleUser) {
-      alert('Silakan login dengan akun Google terlebih dahulu.');
+      showAppToast('Silakan login dengan akun Google terlebih dahulu.');
       return;
     }
 
-    const confirmWipe = window.confirm(
-      '⚠️ PERINGATAN KERAS! ⚠️\n\nTindakan ini akan menghapus semua records keuangan & iuran Anda yang tersimpan di cloud database Firestore secara permanen.\n\nApakah Anda benar-benar yakin ingin menghapus data akun ini dari cloud?'
+    askAppConfirm(
+      'Hapus Seluruh Data',
+      '⚠️ PERINGATAN KERAS! ⚠️\nTindakan ini akan menghapus semua records keuangan & iuran Anda yang tersimpan di cloud database Firestore secara permanen.\n\nApakah Anda benar-benar yakin ingin menghapus data akun ini dari cloud?',
+      async () => {
+        try {
+          const userRef = doc(db, 'users', googleUser.uid);
+          
+          // Wipe remote firestore record with empty defaults
+          await setDoc(userRef, {
+            finance: getDefaultFinanceData(),
+            iuran: getDefaultIuranData(),
+            updatedAt: new Date().toISOString()
+          }, { merge: false });
+
+          // Clean local cache storage
+          localStorage.removeItem('catatan_keuangan_v1');
+          localStorage.removeItem('iuran_siswa_v1');
+
+          setFinance(getDefaultFinanceData());
+          setIuran(getDefaultIuranData());
+
+          // Logout and clear tokens
+          await logout();
+          setGoogleUser(null);
+          setGoogleToken(null);
+          setDriveFiles([]);
+
+          showAppToast('Seluruh data Anda di cloud Firestore & lokal berhasil dihapus bersih. Sesi akun Google Anda dinonaktifkan.');
+        } catch (err: any) {
+          console.error('Failure wiping Firestore records:', err);
+          handleFirestoreError(err, OperationType.WRITE, `users/${googleUser?.uid}`);
+        }
+      },
+      'Hapus Permanen',
+      'danger',
+      'Batal'
     );
-    if (!confirmWipe) return;
-
-    try {
-      const userRef = doc(db, 'users', googleUser.uid);
-      
-      // Wipe remote firestore record with empty defaults
-      await setDoc(userRef, {
-        finance: getDefaultFinanceData(),
-        iuran: getDefaultIuranData(),
-        updatedAt: new Date().toISOString()
-      }, { merge: false });
-
-      // Clean local cache storage
-      localStorage.removeItem('catatan_keuangan_v1');
-      localStorage.removeItem('iuran_siswa_v1');
-
-      setFinance(getDefaultFinanceData());
-      setIuran(getDefaultIuranData());
-
-      // Logout and clear tokens
-      await logout();
-      setGoogleUser(null);
-      setGoogleToken(null);
-      setDriveFiles([]);
-
-      alert('Seluruh data Anda di cloud Firestore & lokal berhasil dihapus bersih. Sesi akun Google Anda dinonaktifkan.');
-    } catch (err: any) {
-      console.error('Failure wiping Firestore records:', err);
-      handleFirestoreError(err, OperationType.WRITE, `users/${googleUser?.uid}`);
-    }
   };
 
   // Google Drive Manual Backup
@@ -409,26 +453,34 @@ export default function App() {
 
   // Forgets PIN - Forced Logout
   const handleResetPinForced = () => {
-    if (window.confirm('Lupa PIN? Untuk reset, seluruh sesi akun Google akan dikeluarkan. Lanjutkan?')) {
-      logout().then(() => {
-        setGoogleUser(null);
-        setGoogleToken(null);
-        setPinInput('');
-        setPinError(null);
-        
-        // Switch off PIN flag in local to let owner re-enter
-        const nextF = {
-          ...finance,
-          settings: {
-            ...finance.settings,
-            appPinHash: ''
-          }
-        };
-        setFinance(nextF);
-        localStorage.setItem('catatan_keuangan_v1', JSON.stringify(nextF));
-        setIsLocked(false);
-      });
-    }
+    askAppConfirm(
+      'Lupa PIN / Reset',
+      'Untuk mereset PIN kata sandi, seluruh sesi login akun Google Anda saat ini akan dikeluarkan secara aman. Lanjutkan reset?',
+      () => {
+        logout().then(() => {
+          setGoogleUser(null);
+          setGoogleToken(null);
+          setPinInput('');
+          setPinError(null);
+          
+          // Switch off PIN flag in local to let owner re-enter
+          const nextF = {
+            ...finance,
+            settings: {
+              ...finance.settings,
+              appPinHash: ''
+            }
+          };
+          setFinance(nextF);
+          localStorage.setItem('catatan_keuangan_v1', JSON.stringify(nextF));
+          setIsLocked(false);
+          showAppToast('PIN Keamanan berhasil dinonaktifkan.');
+        });
+      },
+      'Keluar & Reset',
+      'warning',
+      'Batal'
+    );
   };
 
   // Lock screen Overlay
@@ -551,6 +603,12 @@ export default function App() {
               >
                 <BookOpen className="w-3.5 h-3.5" /> Dues Siswa
               </button>
+              <button
+                onClick={() => startTransition(() => setActiveSystem('ai'))}
+                className={`py-1.5 px-3.5 rounded-lg text-xs font-black capitalize transition flex items-center gap-1.5 ${activeSystem === 'ai' ? 'bg-gradient-to-r from-blue-500/20 to-indigo-500/20 text-sky-300 shadow-sm border border-blue-500/20 animate-pulse' : 'text-slate-400 hover:text-slate-200'}`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-yellow-400" /> Analisis AI
+              </button>
             </div>
 
             {/* General PIN shield */}
@@ -587,12 +645,17 @@ export default function App() {
                 onRefreshDriveFiles={handleRefreshDriveFiles}
                 onDeleteAccountData={handleDeleteAccountData}
               />
-            ) : (
+            ) : activeSystem === 'iuran' ? (
               <IuranSiswa 
                 data={iuran}
                 onDataChange={next => handleDataChange(finance, next)}
                 financeData={finance}
                 onFinanceDataChange={next => handleDataChange(next, iuran)}
+              />
+            ) : (
+              <AiRingkasan 
+                financeData={finance}
+                iuranData={iuran}
               />
             )}
           </>
@@ -633,6 +696,69 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Custom Toast Alert */}
+      {appToast && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 bg-slate-900 border border-white/10 text-white px-5 py-3 rounded-full shadow-2xl z-50 flex items-center gap-2 animate-bounce">
+          <BookOpen className="w-4 h-4 text-sky-400" />
+          <span className="text-xs font-bold leading-none">{appToast}</span>
+        </div>
+      )}
+
+      {/* Custom Confirm Modal */}
+      {appConfirm && appConfirm.isOpen && (() => {
+        let iconComponent = <ShieldAlert className="w-6 h-6 animate-pulse" />;
+        let iconBg = "bg-rose-500/10 text-rose-450";
+        let confirmBtnClass = "bg-rose-500 hover:bg-rose-600 text-white shadow-lg shadow-rose-500/20";
+
+        if (appConfirm.type === 'success') {
+          iconComponent = <Check className="w-6 h-6" />;
+          iconBg = "bg-emerald-500/10 text-emerald-400";
+          confirmBtnClass = "bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/20";
+        } else if (appConfirm.type === 'warning') {
+          iconComponent = <Lock className="w-6 h-6 animate-pulse" />;
+          iconBg = "bg-amber-500/10 text-amber-500";
+          confirmBtnClass = "bg-amber-500 hover:bg-amber-600 text-white shadow-lg shadow-amber-500/20";
+        } else if (appConfirm.type === 'info') {
+          iconComponent = <BookOpen className="w-6 h-6" />;
+          iconBg = "bg-blue-500/10 text-blue-400";
+          confirmBtnClass = "bg-blue-500 hover:bg-blue-600 text-white shadow-lg shadow-blue-500/20";
+        }
+
+        const confirmLabel = appConfirm.confirmText || 'Ya';
+        const cancelLabel = appConfirm.cancelText || 'Batal';
+
+        return (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-250">
+            <div className="bg-slate-900 border border-white/10 p-6 rounded-3xl max-w-sm w-full text-center space-y-4 shadow-2xl animate-in fade-in zoom-in duration-150">
+              <div className={`w-12 h-12 ${iconBg} rounded-2xl flex items-center justify-center mx-auto`}>
+                {iconComponent}
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-white">{appConfirm.title}</h3>
+                <p className="text-xs text-slate-400 mt-2 leading-relaxed">{appConfirm.message}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3 pt-2 text-xs font-bold">
+                <button 
+                  onClick={() => setAppConfirm(null)} 
+                  className="bg-white/5 hover:bg-white/10 text-slate-200 border border-white/10 rounded-xl py-3 px-4 transition active:scale-95 cursor-pointer"
+                >
+                  {cancelLabel}
+                </button>
+                <button 
+                  onClick={() => {
+                    appConfirm.onConfirm();
+                    setAppConfirm(null);
+                  }} 
+                  className={`${confirmBtnClass} rounded-xl py-3 px-4 transition active:scale-95 cursor-pointer`}
+                >
+                  {confirmLabel}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

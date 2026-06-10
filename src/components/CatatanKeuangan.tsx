@@ -36,7 +36,8 @@ import {
   Printer, 
   Lock, 
   Bell, 
-  History 
+  History,
+  TrendingUp
 } from 'lucide-react';
 import { GoogleDriveFile } from '../googleDrive';
 
@@ -309,6 +310,34 @@ export const CatatanKeuangan: React.FC<CatatanKeuanganProps> = ({
 
     return sorted;
   }, [data.transactions, searchQuery, searchTxType, searchParentId, searchCategoryId, selectedFilterCats, searchSubcategoryId, searchStart, searchEnd, searchSort]);
+
+  // Accumulate parent categories totals within the current search results
+  const parentCategoryTotals = useMemo(() => {
+    const totals: Record<string, { income: number; expense: number; name: string; type: 'income' | 'expense'; color: string }> = {};
+    
+    searchResults.forEach(t => {
+      const pId = t.parentCategory || catObj(t.category).parentId || 'unknown';
+      if (!totals[pId]) {
+        const parentInformation = parentObj(pId);
+        totals[pId] = {
+          income: 0,
+          expense: 0,
+          name: parentInformation.name,
+          type: parentInformation.type,
+          color: parentInformation.color
+        };
+      }
+      if (t.type === 'income') {
+        totals[pId].income += Number(t.amount) || 0;
+      } else {
+        totals[pId].expense += Number(t.amount) || 0;
+      }
+    });
+
+    return Object.entries(totals)
+      .map(([id, val]) => ({ id, ...val }))
+      .filter(v => v.income > 0 || v.expense > 0);
+  }, [searchResults, data.parentCategories, data.categories]);
 
   // Chart view breakdowns
   const chartTypeToggle = useState<'income' | 'expense'>('expense');
@@ -1117,6 +1146,38 @@ export const CatatanKeuangan: React.FC<CatatanKeuanganProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Akumulasi Induk Kategori */}
+          {parentCategoryTotals.length > 0 && (
+            <div className="bg-gradient-to-br from-slate-900/80 to-slate-950/80 backdrop-blur-md border border-white/10 p-5 rounded-3xl space-y-3 shadow-xl">
+              <div className="flex items-center gap-1.5">
+                <TrendingUp className="w-4 h-4 text-sky-400" />
+                <h4 className="text-xs font-black text-white uppercase tracking-wider">Akumulasi per Induk Kategori</h4>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {parentCategoryTotals.map(p => {
+                  const isIncome = p.type === 'income';
+                  const totalAmount = isIncome ? p.income : p.expense;
+                  return (
+                    <div key={p.id} className="relative bg-white/5 border border-white/5 p-3.5 rounded-2xl flex items-center justify-between overflow-hidden">
+                      <div className="absolute top-0 left-0 w-1 h-full" style={{ backgroundColor: p.color || '#42a5f5' }}></div>
+                      <div className="pl-3 min-w-0">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider truncate">{p.name}</span>
+                        <span className="text-xs text-white font-extrabold mt-0.5 block truncate">
+                          {isIncome ? 'Pemasukan' : 'Pengeluaran'}
+                        </span>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className={`text-sm font-black ${isIncome ? 'text-emerald-400' : 'text-rose-450'}`}>
+                          {isIncome ? '+' : '-'}{formatMoney(totalAmount, data.settings)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center justify-between pb-1">
             <h3 className="text-sm font-black text-white">HASIL PENCARIAN ({searchResults.length})</h3>

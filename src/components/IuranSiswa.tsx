@@ -33,7 +33,8 @@ import {
   RefreshCw, 
   Info, 
   BookOpen, 
-  CreditCard 
+  CreditCard,
+  CalendarDays
 } from 'lucide-react';
 
 interface IuranSiswaProps {
@@ -145,6 +146,78 @@ export const IuranSiswa: React.FC<IuranSiswaProps> = ({
     const p = s.pembayaran?.[monthName];
     if (p) return p;
     return { nominal: 0, status: 'Belum', tanggal: '', catatan: '' };
+  };
+
+  // State for date synchronization
+  const [syncTargetDate, setSyncTargetDate] = useState<string>(todayISO());
+
+  const handleSyncPaymentDates = () => {
+    if (!currentKelas || !currentBagian) return;
+
+    const countLunas = filteredStudents.reduce((acc, s) => {
+      let count = 0;
+      activeMonths.forEach(m => {
+        const p = getStudentPayment(s, m);
+        if (p.status === 'Lunas') count++;
+      });
+      return acc + count;
+    }, 0);
+
+    if (countLunas === 0) {
+      showToast('⚠️ Tidak ada siswa yang berstatus LUNAS untuk disinkronkan tanggal bayarnya.');
+      return;
+    }
+
+    askConfirmation(
+      'Seragamkan Tanggal Bayar',
+      `Apakah Anda yakin ingin menyeragamkan seluruh tanggal pembayaran iuran (${countLunas} transaksi Lunas) di bagian "${currentBagian.nama}" untuk bulan ${activeMonths.join(', ')} menjadi tanggal: ${syncTargetDate}?\n\nTindakan ini juga akan memperbarui tanggal di kas ledger keuangan secara otomatis agar tersinkronisasi sempurna.`,
+      () => {
+        const idsToApply = filteredStudents.map(s => s.id);
+        const nextList = (data.kelasList || []).map(k => {
+          if (k.id === currentKelas.id) {
+            const nextParts = k.bagianList.map(b => {
+              if (b.id === currentBagian.id) {
+                const nextSts = b.students.map(s => {
+                  if (idsToApply.includes(s.id)) {
+                    const updatedPembayaran = { ...s.pembayaran };
+                    activeMonths.forEach(m => {
+                      const p = getStudentPayment(s, m);
+                      if (p.status === 'Lunas') {
+                        updatedPembayaran[m] = {
+                          ...p,
+                          tanggal: syncTargetDate
+                        };
+                      }
+                    });
+                    return {
+                      ...s,
+                      pembayaran: updatedPembayaran
+                    };
+                  }
+                  return s;
+                });
+                return { ...b, students: nextSts };
+              }
+              return b;
+            });
+            const activeB = nextParts.find(b => b.id === k.activeBagianId) || nextParts[0];
+            return {
+              ...k,
+              bagianList: nextParts,
+              students: activeB ? activeB.students : []
+            };
+          }
+          return k;
+        });
+
+        onDataChange({
+          ...data,
+          kelasList: nextList
+        });
+
+        showToast(`Berhasil menyeragamkan ${countLunas} tanggal pembayaran iuran ke tanggal ${syncTargetDate}!`);
+      }
+    );
   };
 
   // Stats Calculations
@@ -953,19 +1026,39 @@ export const IuranSiswa: React.FC<IuranSiswaProps> = ({
         </div>
 
         {/* Quick actions buttons row */}
-        <div className="flex flex-wrap gap-2 pt-3 border-t border-white/10 justify-end">
-          <button onClick={() => setShowShareModal(true)} className="p-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-extrabold text-xs rounded-xl transition flex items-center gap-1 text-[11px]">
-            <Share2 className="w-3.5 h-3.5" /> Share
-          </button>
-          <button onClick={() => { setBulkActionType('Lunas'); setShowBulkActionModal(true); }} className="p-2.5 bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 font-extrabold text-xs rounded-xl transition flex items-center gap-1 text-[11px]">
-            <Check className="w-3.5 h-3.5" /> Set Lunas
-          </button>
-          <button onClick={() => { setBulkActionType('Belum'); setShowBulkActionModal(true); }} className="p-2.5 bg-rose-500/10 hover:bg-rose-500/15 border border-rose-500/30 text-rose-400 font-extrabold text-xs rounded-xl transition flex items-center gap-1 text-[11px]">
-            <X className="w-3.5 h-3.5" /> Batalkan Lunas
-          </button>
-          <button onClick={() => setShowManageStudentsModal(true)} className="p-2.5 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs rounded-xl transition flex items-center gap-1 shadow-lg shadow-rose-600/15 text-[11px]">
-            <Plus className="w-3.5 h-3.5" /> Siswa
-          </button>
+        <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-white/10 justify-between">
+          {/* Integrated Date Sync group */}
+          <div className="flex items-center gap-2 p-1.5 bg-white/5 border border-white/10 rounded-xl">
+            <span className="text-[10px] uppercase font-black text-slate-400 pl-1.5 hidden md:inline">Tgl Sinkron:</span>
+            <input 
+              type="date"
+              value={syncTargetDate}
+              onChange={e => setSyncTargetDate(e.target.value)}
+              className="bg-transparent text-white font-extrabold text-[11px] border-none focus:outline-none focus:ring-0 w-28 uppercase p-1"
+            />
+            <button 
+              onClick={handleSyncPaymentDates}
+              className="bg-sky-600 hover:bg-sky-700 active:scale-95 text-white text-[10px] font-black uppercase px-2.5 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1 shrink-0"
+              title="Seragamkan seluruh tanggal bayar lunas saat ini"
+            >
+              <CalendarDays className="w-3 h-3 text-sky-200" /> SINKRONKAN
+            </button>
+          </div>
+
+          <div className="flex flex-wrap gap-2 items-center">
+            <button onClick={() => setShowShareModal(true)} className="p-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-extrabold text-xs rounded-xl transition flex items-center gap-1 text-[11px]">
+              <Share2 className="w-3.5 h-3.5" /> Share
+            </button>
+            <button onClick={() => { setBulkActionType('Lunas'); setShowBulkActionModal(true); }} className="p-2.5 bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 font-extrabold text-xs rounded-xl transition flex items-center gap-1 text-[11px]">
+              <Check className="w-3.5 h-3.5" /> Set Lunas
+            </button>
+            <button onClick={() => { setBulkActionType('Belum'); setShowBulkActionModal(true); }} className="p-2.5 bg-rose-500/10 hover:bg-rose-500/15 border border-rose-500/30 text-rose-400 font-extrabold text-xs rounded-xl transition flex items-center gap-1 text-[11px]">
+              <X className="w-3.5 h-3.5" /> Batalkan Lunas
+            </button>
+            <button onClick={() => setShowManageStudentsModal(true)} className="p-2.5 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs rounded-xl transition flex items-center gap-1 shadow-lg shadow-rose-600/15 text-[11px]">
+              <Plus className="w-3.5 h-3.5" /> Siswa
+            </button>
+          </div>
         </div>
       </div>
 
