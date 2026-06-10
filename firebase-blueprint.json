@@ -1,0 +1,32 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User data containing financial records and student dues tracking.",
+      "type": "object",
+      "properties": {
+        "finance": {
+          "type": "object",
+          "description": "FinanceData structure"
+        },
+        "iuran": {
+          "type": "object",
+          "description": "IuranData structure"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO timestamp of last update"
+        }
+      },
+      "required": [
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Collection storing full persistent state of a user's finance records and student dues data indexed by Firebase authentication UID."
+    }
+  }
+}
