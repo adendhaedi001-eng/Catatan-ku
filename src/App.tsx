@@ -2,10 +2,12 @@ import { useState, useEffect, useTransition } from 'react';
 import { 
   googleSignIn, 
   logout, 
-  initAuth 
+  initAuth,
+  OperationType,
+  handleFirestoreError
 } from './firebase';
 import { db } from './firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { 
   listBackupFiles, 
   uploadBackupFile, 
@@ -89,21 +91,27 @@ export default function App() {
         iuran: id,
         updatedAt: new Date().toISOString()
       }, { merge: true }).catch(err => {
-        console.error('Failed to sync to Firestore:', err);
+        handleFirestoreError(err, OperationType.WRITE, `users/${googleUser.uid}`);
       });
     }
   };
 
   // Check login on mounts
   useEffect(() => {
+    let unsubDoc: (() => void) | null = null;
     const unsub = initAuth(
       (user, token) => {
         setGoogleUser(user);
         setGoogleToken(token);
         
-        // Fetch from Firestore
+        // Fetch from Firestore in real-time
         const userRef = doc(db, 'users', user.uid);
-        getDoc(userRef).then(snap => {
+        
+        if (unsubDoc) {
+          unsubDoc();
+        }
+
+        unsubDoc = onSnapshot(userRef, (snap) => {
           if (snap.exists()) {
             const dataFirestore = snap.data();
             if (dataFirestore.finance && dataFirestore.iuran) {
@@ -118,11 +126,13 @@ export default function App() {
               finance,
               iuran,
               updatedAt: new Date().toISOString()
-            }).catch(e => console.error('Failed to initialize user document in Firestore:', e));
+            }).catch(e => {
+              handleFirestoreError(e, OperationType.WRITE, `users/${user.uid}`);
+            });
           }
-        }).catch(err => {
-          console.warn('Failed to fetch user data from Firestore (perhaps offline):', err);
-          // Gracefully fallback to localStorage data which is already pre-loaded
+        }, (err) => {
+          console.error('Realtime error fetching user data from Firestore:', err);
+          handleFirestoreError(err, OperationType.GET, `users/${user.uid}`);
         });
 
         // Load files list from drive
@@ -143,9 +153,18 @@ export default function App() {
       () => {
         setGoogleUser(null);
         setGoogleToken(null);
+        if (unsubDoc) {
+          unsubDoc();
+          unsubDoc = null;
+        }
       }
     );
-    return () => unsub();
+    return () => {
+      unsub();
+      if (unsubDoc) {
+        unsubDoc();
+      }
+    };
   }, [googleUser?.uid]);
 
   // Lock code initializations
@@ -290,7 +309,7 @@ export default function App() {
       alert('Seluruh data Anda di cloud Firestore & lokal berhasil dihapus bersih. Sesi akun Google Anda dinonaktifkan.');
     } catch (err: any) {
       console.error('Failure wiping Firestore records:', err);
-      alert(`Gagal menghapus data di cloud: ${err.message || err}`);
+      handleFirestoreError(err, OperationType.WRITE, `users/${googleUser?.uid}`);
     }
   };
 
