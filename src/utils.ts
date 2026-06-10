@@ -510,6 +510,67 @@ export function syncData(
     }
   };
 
+  // 0. Automatically create students in nextId (IuranData) for newly added subcategories under iuran-managed categories
+  if (isFinanceChanged && !isIuranChanged && nextId.kelasList) {
+    const existingStudentSubcategoryIds = new Set<string>();
+    forEachStudent(nextId, (student) => {
+      if (student.financeSubcategoryId) {
+        existingStudentSubcategoryIds.add(student.financeSubcategoryId);
+      }
+    });
+
+    nextFd.subcategories.forEach((sc) => {
+      const c = nextFd.categories.find(cat => cat.id === sc.categoryId);
+      if (c) {
+        const isManagedParent = c.parentId === 'parent_al_hidayah' || c.parentId.startsWith('parent_iuran_') || c.parentId.startsWith('lembaga-');
+        if (isManagedParent && !existingStudentSubcategoryIds.has(sc.id)) {
+          const targetKelas = nextId.kelasList.find(k => k.id === c.parentId);
+          if (targetKelas) {
+            const possibleBagianIds = [c.id, `bagian_${c.id}`];
+            let targetBagian = (targetKelas.bagianList || []).find(b => possibleBagianIds.includes(b.id));
+            if (!targetBagian && targetKelas.bagianList && targetKelas.bagianList.length > 0) {
+              targetBagian = targetKelas.bagianList[0];
+            }
+            if (targetBagian) {
+              if (!targetBagian.students) targetBagian.students = [];
+              if (!targetKelas.students) targetKelas.students = [];
+
+              let maxNo = 0;
+              targetBagian.students.forEach(st => {
+                const num = parseFloat(st.no);
+                if (!isNaN(num) && num > maxNo) maxNo = num;
+              });
+              const nextNo = String(Math.floor(maxNo) + 1);
+
+              const studentId = `s_auto_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+              const newStudent: Student = {
+                id: studentId,
+                no: nextNo,
+                nama: sc.name,
+                financeSubcategoryId: sc.id,
+                financeParentId: c.parentId,
+                financeCategoryId: c.id,
+                pembayaran: {}
+              };
+
+              MONTHS.forEach(m => {
+                newStudent.pembayaran[m] = {
+                  nominal: 0,
+                  status: 'Belum',
+                  tanggal: '',
+                  catatan: ''
+                };
+              });
+
+              targetBagian.students.push(newStudent);
+              existingStudentSubcategoryIds.add(sc.id);
+            }
+          }
+        }
+      }
+    });
+  }
+
   // 1. Maintain Parent, Categories, and Subcategories from Classes Config metadata in FinanceData
   if (nextId.kelasList) {
     nextId.kelasList.forEach((kelas) => {

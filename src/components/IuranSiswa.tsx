@@ -748,6 +748,18 @@ export const IuranSiswa: React.FC<IuranSiswaProps> = ({
     );
   };
 
+  // Accumulate all students across all class sections under the active institution
+  const allStudentsInKelas = useMemo(() => {
+    if (!currentKelas) return [];
+    const map = new Map<string, Student>();
+    currentKelas.bagianList?.forEach(b => {
+      b.students?.forEach(s => {
+        map.set(s.id, s);
+      });
+    });
+    return Array.from(map.values());
+  }, [currentKelas]);
+
   // Dues Accumulations list computations
   const rekapRows = useMemo(() => {
     if (rekapMode === 'bulanan') {
@@ -756,7 +768,7 @@ export const IuranSiswa: React.FC<IuranSiswaProps> = ({
         let totalVal = 0;
         let lunasCt = 0;
         let belumCt = 0;
-        currentStudents.forEach(s => {
+        allStudentsInKelas.forEach(s => {
           const p = getStudentPayment(s, month);
           if (p.status === 'Lunas') {
             lunasCt += 1;
@@ -770,7 +782,7 @@ export const IuranSiswa: React.FC<IuranSiswaProps> = ({
     } else if (rekapMode === 'harian') {
       let totalVal = 0;
       let countVal = 0;
-      currentStudents.forEach(s => {
+      allStudentsInKelas.forEach(s => {
         MONTHS.forEach(m => {
           const p = getStudentPayment(s, m);
           if (p.status === 'Lunas' && p.tanggal === rekapDateSelection) {
@@ -784,7 +796,7 @@ export const IuranSiswa: React.FC<IuranSiswaProps> = ({
       // custom ranges
       let totalVal = 0;
       let countVal = 0;
-      currentStudents.forEach(s => {
+      allStudentsInKelas.forEach(s => {
         MONTHS.forEach(m => {
           const p = getStudentPayment(s, m);
           if (p.status === 'Lunas' && p.tanggal >= rekapStartSelection && p.tanggal <= rekapEndSelection) {
@@ -795,7 +807,7 @@ export const IuranSiswa: React.FC<IuranSiswaProps> = ({
       });
       return [{ label: `${rekapStartSelection} s/d ${rekapEndSelection}`, total: totalVal, lunas: countVal, belum: '-' }];
     }
-  }, [currentStudents, rekapMode, rekapBulanSelection, rekapDateSelection, rekapStartSelection, rekapEndSelection]);
+  }, [allStudentsInKelas, rekapMode, rekapBulanSelection, rekapDateSelection, rekapStartSelection, rekapEndSelection]);
 
   const rekapGrandTotal = useMemo(() => {
     return rekapRows.reduce((sum, r) => sum + (typeof r.total === 'number' ? r.total : 0), 0);
@@ -1004,7 +1016,7 @@ export const IuranSiswa: React.FC<IuranSiswaProps> = ({
                             type="number"
                             placeholder="0"
                             disabled={!isPaid}
-                            value={isPaid ? (pay.nominal || 0) : ''}
+                            value={isPaid && pay.nominal !== 0 ? pay.nominal : ''}
                             onChange={e => handleUpdateNominal(s.id, e.target.value, month)}
                             className={`w-28 text-right font-black border p-1 rounded-xl text-xs bg-white/5 focus:outline-none text-white disabled:opacity-50 ${isPaid ? 'border-white/10' : 'border-transparent'}`}
                           />
@@ -1141,6 +1153,15 @@ export const IuranSiswa: React.FC<IuranSiswaProps> = ({
                 </tr>
               ))}
             </tbody>
+            {rekapGrandTotal > 0 && (
+              <tfoot>
+                <tr className="border-t border-white/20 font-black text-white text-[11px] bg-white/5">
+                  <td className="py-3 px-2.5 font-black tracking-wider uppercase text-slate-300">TOTAL SELURUHNYA</td>
+                  <td colSpan={2} className="py-3 text-center text-slate-400 font-bold">Terakumulasi</td>
+                  <td className="py-3 px-2.5 text-right text-emerald-450 font-black text-sm">{formatMoney(rekapGrandTotal, financeData.settings)}</td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </div>
