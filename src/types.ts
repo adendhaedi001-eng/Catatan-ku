@@ -76,6 +76,7 @@ export interface Payment {
   status: 'Lunas' | 'Belum';
   tanggal: string; // YYYY-MM-DD
   catatan: string;
+  type?: 'income' | 'expense';
   syncSource?: string;
   syncKey?: string;
   financeTransactionId?: string;

@@ -233,7 +233,11 @@ export const IuranSiswa: React.FC<IuranSiswaProps> = ({
         const pay = getStudentPayment(s, m);
         if (pay.status === 'Lunas') {
           lunasCount++;
-          totalUang += pay.nominal || 0;
+          if (pay.type === 'expense') {
+            totalUang -= pay.nominal || 0;
+          } else {
+            totalUang += pay.nominal || 0;
+          }
         }
       });
     });
@@ -392,6 +396,48 @@ export const IuranSiswa: React.FC<IuranSiswaProps> = ({
                     [monthName]: {
                       ...p,
                       tanggal: dateStr
+                    }
+                  }
+                };
+              }
+              return s;
+            });
+            return { ...b, students: nextSts };
+          }
+          return b;
+        });
+        const activeB = nextParts.find(b => b.id === k.activeBagianId) || nextParts[0];
+        return {
+          ...k,
+          bagianList: nextParts,
+          students: activeB ? activeB.students : []
+        };
+      }
+      return k;
+    });
+
+    onDataChange({
+      ...data,
+      kelasList: nextList
+    });
+  };
+
+  const handleUpdateType = (studentId: string, itemType: 'income' | 'expense', monthName: string = activeBulan) => {
+    if (!currentKelas || !currentBagian) return;
+    const nextList = (data.kelasList || []).map(k => {
+      if (k.id === currentKelas.id) {
+        const nextParts = k.bagianList.map(b => {
+          if (b.id === currentBagian.id) {
+            const nextSts = b.students.map(s => {
+              if (s.id === studentId) {
+                const p = getStudentPayment(s, monthName);
+                return {
+                  ...s,
+                  pembayaran: {
+                    ...s.pembayaran,
+                    [monthName]: {
+                      ...p,
+                      type: itemType
                     }
                   }
                 };
@@ -845,7 +891,11 @@ export const IuranSiswa: React.FC<IuranSiswaProps> = ({
           const p = getStudentPayment(s, month);
           if (p.status === 'Lunas') {
             lunasCt += 1;
-            totalVal += p.nominal || 0;
+            if (p.type === 'expense') {
+              totalVal -= p.nominal || 0;
+            } else {
+              totalVal += p.nominal || 0;
+            }
           } else {
             belumCt += 1;
           }
@@ -859,7 +909,11 @@ export const IuranSiswa: React.FC<IuranSiswaProps> = ({
         MONTHS.forEach(m => {
           const p = getStudentPayment(s, m);
           if (p.status === 'Lunas' && p.tanggal === rekapDateSelection) {
-            totalVal += p.nominal || 0;
+            if (p.type === 'expense') {
+              totalVal -= p.nominal || 0;
+            } else {
+              totalVal += p.nominal || 0;
+            }
             countVal += 1;
           }
         });
@@ -873,7 +927,11 @@ export const IuranSiswa: React.FC<IuranSiswaProps> = ({
         MONTHS.forEach(m => {
           const p = getStudentPayment(s, m);
           if (p.status === 'Lunas' && p.tanggal >= rekapStartSelection && p.tanggal <= rekapEndSelection) {
-            totalVal += p.nominal || 0;
+            if (p.type === 'expense') {
+              totalVal -= p.nominal || 0;
+            } else {
+              totalVal += p.nominal || 0;
+            }
             countVal += 1;
           }
         });
@@ -1097,12 +1155,24 @@ export const IuranSiswa: React.FC<IuranSiswaProps> = ({
                         </td>
                         <td className="py-3 text-blue-400 font-bold text-[11px] uppercase tracking-wider">{month}</td>
                         <td className="py-3 text-center">
-                          <button
-                            onClick={() => handleToggleStatus(s.id, month)}
-                            className={`py-1 w-20 text-[10px] uppercase font-black tracking-wider transition rounded-full shadow-sm text-center cursor-pointer ${isPaid ? 'bg-emerald-500/10 hover:bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/10 hover:bg-rose-500/15 text-rose-400 border border-rose-500/20'}`}
-                          >
-                            {isPaid ? '✓ Lunas' : 'Bayar'}
-                          </button>
+                          <div className="flex flex-col items-center gap-1.5 justify-center">
+                            <button
+                              onClick={() => handleToggleStatus(s.id, month)}
+                              className={`py-1 w-20 text-[10px] uppercase font-black tracking-wider transition rounded-full shadow-sm text-center cursor-pointer ${isPaid ? 'bg-emerald-500/10 hover:bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/10 hover:bg-rose-500/15 text-rose-400 border border-rose-500/20'}`}
+                            >
+                              {isPaid ? '✓ Lunas' : 'Bayar'}
+                            </button>
+                            {isPaid && (
+                              <select
+                                value={pay.type || 'income'}
+                                onChange={(e) => handleUpdateType(s.id, e.target.value as 'income' | 'expense', month)}
+                                className="bg-slate-900 border border-white/10 rounded-lg px-1.5 py-0.5 text-[9px] uppercase font-bold text-slate-300 focus:outline-none focus:ring-0 cursor-pointer"
+                              >
+                                <option value="income" className="text-emerald-400">Pemasukan</option>
+                                <option value="expense" className="text-rose-400">Pengeluaran</option>
+                              </select>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3 text-right">
                           <input 
@@ -1111,7 +1181,7 @@ export const IuranSiswa: React.FC<IuranSiswaProps> = ({
                             disabled={!isPaid}
                             value={isPaid && pay.nominal !== 0 ? pay.nominal : ''}
                             onChange={e => handleUpdateNominal(s.id, e.target.value, month)}
-                            className={`w-28 text-right font-black border p-1 rounded-xl text-xs bg-white/5 focus:outline-none text-white disabled:opacity-50 ${isPaid ? 'border-white/10' : 'border-transparent'}`}
+                            className={`w-28 text-right font-black border p-1 rounded-xl text-xs bg-white/5 focus:outline-none disabled:opacity-50 ${isPaid ? (pay.type === 'expense' ? 'border-rose-500/30 text-rose-450' : 'border-emerald-500/30 text-emerald-400') : 'border-transparent text-white'}`}
                           />
                         </td>
                         <td className="py-3 text-center">

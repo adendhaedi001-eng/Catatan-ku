@@ -717,6 +717,7 @@ export function syncData(
           p.financeTransactionId = matchedTx.id;
           p.syncKey = key;
           p.syncSource = 'iuran-siswa';
+          p.type = matchedTx.type;
         } else {
           // If transaction is deleted or missing, but student was marked Lunas, reset dues to Belum
           if (p.status === 'Lunas') {
@@ -726,13 +727,14 @@ export function syncData(
             p.financeTransactionId = undefined;
             p.syncKey = undefined;
             p.syncSource = undefined;
+            p.type = undefined;
           }
         }
       });
 
       // Scan all transactions in ledger to see if a transaction was manually added/edited for this student
       nextFd.transactions.forEach((t) => {
-        if (t.subcategory === subId && t.type === 'income' && t.amount > 0) {
+        if (t.subcategory === subId && (t.type === 'income' || t.type === 'expense') && t.amount > 0) {
           const bulan = getMonthFromISO(t.date);
           const key = `${subId}|${bulan}`;
           if (!student.pembayaran[bulan]) {
@@ -750,6 +752,7 @@ export function syncData(
           p.financeTransactionId = t.id;
           p.syncKey = key;
           p.syncSource = 'iuran-siswa';
+          p.type = t.type;
         }
       });
     });
@@ -810,8 +813,9 @@ export function syncData(
       if (key) {
         const info = paidMap.get(key);
         if (info) {
+          const payloadType = info.payment.type || 'income';
           // Keep/update transaction in finance ledger
-          t.type = 'income';
+          t.type = payloadType;
           t.parentCategory = info.parentId;
           t.category = info.categoryId;
           t.subcategory = info.subcategoryId;
@@ -848,13 +852,14 @@ export function syncData(
       if (seenKeys.has(key)) return;
 
       const txId = `${PREFIX}${key.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+      const payloadType = info.payment.type || 'income';
       info.payment.syncSource = 'iuran-siswa';
       info.payment.syncKey = key;
       info.payment.financeTransactionId = txId;
 
       finalTransactions.push({
         id: txId,
-        type: 'income',
+        type: payloadType,
         parentCategory: info.parentId,
         category: info.categoryId,
         subcategory: info.subcategoryId,

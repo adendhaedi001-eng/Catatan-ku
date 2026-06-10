@@ -125,6 +125,8 @@ export const CatatanKeuangan: React.FC<CatatanKeuanganProps> = ({
   const [searchEnd, setSearchEnd] = useState<string>('');
   const [searchSort, setSearchSort] = useState<string>('newest');
   const [selectedFilterCats, setSelectedFilterCats] = useState<string[]>([]);
+  const [dashboardParentId, setDashboardParentId] = useState<string>('all');
+  const [dashboardCategoryId, setDashboardCategoryId] = useState<string>('all');
 
   // Modals state
   const [showExportModal, setShowExportModal] = useState<boolean>(false);
@@ -262,9 +264,18 @@ export const CatatanKeuangan: React.FC<CatatanKeuanganProps> = ({
     const { start, end } = periodRange;
     return data.transactions.filter(t => {
       const dt = new Date(t.date + 'T00:00:00');
-      return dt >= start && dt < end;
+      const inDateRange = dt >= start && dt < end;
+      if (!inDateRange) return false;
+
+      const cat = catObj(t.category);
+      const parentId = t.parentCategory || cat.parentId;
+
+      if (dashboardParentId !== 'all' && parentId !== dashboardParentId) return false;
+      if (dashboardCategoryId !== 'all' && t.category !== dashboardCategoryId) return false;
+
+      return true;
     }).sort((a,b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
-  }, [data.transactions, periodRange]);
+  }, [data.transactions, periodRange, dashboardParentId, dashboardCategoryId]);
 
   const periodTotals = useMemo(() => calculateTotals(periodTransactions), [periodTransactions]);
 
@@ -825,6 +836,61 @@ export const CatatanKeuangan: React.FC<CatatanKeuanganProps> = ({
               <button onClick={() => setActiveTab('chart')} className="bg-white/5 hover:bg-white/10 border border-white/10 p-2.5 rounded-xl text-slate-300 shadow-sm transition">
                 <ChartIcon className="w-4 h-4" />
               </button>
+            </div>
+          </div>
+
+          {/* Saring Kategori Bar */}
+          <div className="bg-white/5 backdrop-blur-md border border-white/10 p-4 rounded-3xl space-y-3 shadow-md">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] uppercase font-black text-slate-400 tracking-wider">Saring Kategori</span>
+              {(dashboardParentId !== 'all' || dashboardCategoryId !== 'all') && (
+                <button
+                  onClick={() => {
+                    setDashboardParentId('all');
+                    setDashboardCategoryId('all');
+                  }}
+                  className="text-[10px] font-black text-rose-450 hover:text-rose-400 transition uppercase flex items-center gap-1 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" /> Bersihkan Saringan
+                </button>
+              )}
+            </div>
+            
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-[9px] uppercase font-bold text-slate-500 block tracking-wider">Induk Kategori</label>
+                <select
+                  value={dashboardParentId}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setDashboardParentId(val);
+                    setDashboardCategoryId('all');
+                  }}
+                  className="w-full bg-white/5 border border-white/10 p-2.5 rounded-xl text-[11px] font-extrabold focus:outline-none text-white focus:border-blue-500/50 cursor-pointer"
+                >
+                  <option value="all" className="bg-slate-950 text-white">Semua Induk</option>
+                  {parentCats(null).map(p => (
+                    <option key={p.id} value={p.id} className="bg-slate-950 text-white font-extrabold">
+                      {p.type === 'income' ? '🟢' : '🔴'} {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[9px] uppercase font-bold text-slate-500 block tracking-wider">Kategori Spesifik</label>
+                <select
+                  value={dashboardCategoryId}
+                  disabled={dashboardParentId === 'all'}
+                  onChange={(e) => setDashboardCategoryId(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 p-2.5 rounded-xl text-[11px] font-extrabold focus:outline-none text-white focus:border-blue-500/50 cursor-pointer disabled:opacity-40"
+                >
+                  <option value="all" className="bg-slate-950 text-white">Semua Kategori</option>
+                  {dashboardParentId !== 'all' && catsByParent(dashboardParentId).map(c => (
+                    <option key={c.id} value={c.id} className="bg-slate-950 text-white font-extrabold">{c.name}</option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 
