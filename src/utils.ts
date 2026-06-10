@@ -173,7 +173,9 @@ export function getDefaultFinanceData(): FinanceData {
       reminderEnabled: false,
       reminderTime: '20:00',
       lastBackup: '',
-      noAds: true
+      noAds: true,
+      customAccountName: '',
+      customAccountEmail: ''
     }
   };
 }

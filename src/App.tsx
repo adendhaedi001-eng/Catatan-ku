@@ -253,6 +253,47 @@ export default function App() {
     }
   };
 
+  const handleDeleteAccountData = async () => {
+    if (!googleUser) {
+      alert('Silakan login dengan akun Google terlebih dahulu.');
+      return;
+    }
+
+    const confirmWipe = window.confirm(
+      '⚠️ PERINGATAN KERAS! ⚠️\n\nTindakan ini akan menghapus semua records keuangan & iuran Anda yang tersimpan di cloud database Firestore secara permanen.\n\nApakah Anda benar-benar yakin ingin menghapus data akun ini dari cloud?'
+    );
+    if (!confirmWipe) return;
+
+    try {
+      const userRef = doc(db, 'users', googleUser.uid);
+      
+      // Wipe remote firestore record with empty defaults
+      await setDoc(userRef, {
+        finance: getDefaultFinanceData(),
+        iuran: getDefaultIuranData(),
+        updatedAt: new Date().toISOString()
+      }, { merge: false });
+
+      // Clean local cache storage
+      localStorage.removeItem('catatan_keuangan_v1');
+      localStorage.removeItem('iuran_siswa_v1');
+
+      setFinance(getDefaultFinanceData());
+      setIuran(getDefaultIuranData());
+
+      // Logout and clear tokens
+      await logout();
+      setGoogleUser(null);
+      setGoogleToken(null);
+      setDriveFiles([]);
+
+      alert('Seluruh data Anda di cloud Firestore & lokal berhasil dihapus bersih. Sesi akun Google Anda dinonaktifkan.');
+    } catch (err: any) {
+      console.error('Failure wiping Firestore records:', err);
+      alert(`Gagal menghapus data di cloud: ${err.message || err}`);
+    }
+  };
+
   // Google Drive Manual Backup
   const handleBackupToDrive = async () => {
     let currentToken = googleToken;
@@ -525,6 +566,7 @@ export default function App() {
                 onRestoreFromDrive={handleRestoreFromDrive}
                 driveFiles={driveFiles}
                 onRefreshDriveFiles={handleRefreshDriveFiles}
+                onDeleteAccountData={handleDeleteAccountData}
               />
             ) : (
               <IuranSiswa 

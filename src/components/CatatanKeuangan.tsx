@@ -52,6 +52,7 @@ interface CatatanKeuanganProps {
   onRestoreFromDrive: (fileId: string) => Promise<void>;
   driveFiles: GoogleDriveFile[];
   onRefreshDriveFiles: () => Promise<void>;
+  onDeleteAccountData?: () => Promise<void>;
 }
 
 export const CatatanKeuangan: React.FC<CatatanKeuanganProps> = ({
@@ -64,10 +65,12 @@ export const CatatanKeuangan: React.FC<CatatanKeuanganProps> = ({
   onBackupToDrive,
   onRestoreFromDrive,
   driveFiles,
-  onRefreshDriveFiles
+  onRefreshDriveFiles,
+  onDeleteAccountData
 }) => {
   // Navigation & Page State
   const [activeTab, setActiveTab] = useState<'dashboard' | 'transaction' | 'search' | 'chart' | 'settings'>('dashboard');
+  const [showTroubleshoot, setShowTroubleshoot] = useState<boolean>(false);
   const [periodType, setPeriodType] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('monthly');
   const [periodDate, setPeriodDate] = useState<Date>(new Date());
   
@@ -131,6 +134,13 @@ export const CatatanKeuangan: React.FC<CatatanKeuanganProps> = ({
 
   // Settings Forms State
   const [startingBalanceInput, setStartingBalanceInput] = useState<string>(String(data.settings.startingBalance || 0));
+  const [customNameInput, setCustomNameInput] = useState<string>(data.settings.customAccountName || '');
+  const [customEmailInput, setCustomEmailInput] = useState<string>(data.settings.customAccountEmail || '');
+
+  React.useEffect(() => {
+    setCustomNameInput(data.settings.customAccountName || '');
+    setCustomEmailInput(data.settings.customAccountEmail || '');
+  }, [data.settings.customAccountName, data.settings.customAccountEmail]);
 
   // Alert/Toast State
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -1352,9 +1362,22 @@ export const CatatanKeuangan: React.FC<CatatanKeuanganProps> = ({
               <div className="space-y-4 text-xs font-semibold">
                 <div className="bg-white/5 border border-white/10 p-3 rounded-2xl space-y-1">
                   <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">Tersambung sebagai:</span>
-                  <div className="flex items-center gap-2">
-                    {googleUser.photoURL && <img src={googleUser.photoURL} alt="Avatar" className="w-6 h-6 rounded-full" referrerPolicy="no-referrer" />}
-                    <span className="text-white text-xs font-black">{googleUser.displayName || googleUser.email}</span>
+                  <div className="flex items-center gap-2.5">
+                    {googleUser.photoURL ? (
+                      <img src={googleUser.photoURL} alt="Avatar" className="w-8 h-8 rounded-full border border-white/10" referrerPolicy="no-referrer" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-300 flex items-center justify-center font-black text-xs shrink-0">
+                        {(data.settings.customAccountName || googleUser.displayName || googleUser.email || '?')[0].toUpperCase()}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <span className="text-white text-xs font-black block truncate">
+                        {data.settings.customAccountName || googleUser.displayName || googleUser.email}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-extrabold block truncate">
+                        {data.settings.customAccountEmail || googleUser.email}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -1419,6 +1442,142 @@ export const CatatanKeuangan: React.FC<CatatanKeuanganProps> = ({
                   className="bg-rose-500 hover:bg-rose-600 text-white font-extrabold text-xs px-6 py-3 rounded-2xl transition inline-flex items-center gap-2 shadow-lg shadow-rose-500/20 cursor-pointer"
                 >
                   <Cloud className="w-4 h-4" /> Hubungkan Google Drive
+                </button>
+              </div>
+            )}
+
+            {/* Troubleshoot Panel */}
+            <div className="pt-3 border-t border-white/5 mt-3">
+              <button
+                onClick={() => setShowTroubleshoot(!showTroubleshoot)}
+                className="w-full py-2.5 px-3 bg-white/5 hover:bg-white/10 rounded-xl text-[10px] font-bold text-blue-300 transition flex items-center justify-between"
+              >
+                <span>⚠️ Butuh Bantuan Login Google / Mengatasi Masalah Cloudflare?</span>
+                <span className="text-xs">{showTroubleshoot ? '✕ Tutup' : '🔍 Lihat Petunjuk'}</span>
+              </button>
+
+              {showTroubleshoot && (
+                <div className="mt-3 bg-slate-950/40 border border-blue-500/20 p-4 rounded-2xl text-[11px] text-slate-300 space-y-3.5 text-left leading-relaxed">
+                  <div className="space-y-1">
+                    <h4 className="font-extrabold text-blue-400 uppercase tracking-wider text-[9px]">1. MASALAH DOMAIN DI CLOUDFLARE (Gagal Popup)</h4>
+                    <p>
+                      Jika aplikasi dipasang di Cloudflare (misal domain kustom <code className="text-emerald-300 bg-emerald-950/40 px-1 py-0.5 rounded">domainanda.com</code> atau <code className="text-emerald-300 bg-emerald-950/40 px-1 py-0.5 rounded">*.pages.dev</code>), Google Sign-In popup akan menolak koneksi karena domain tersebut belum diizinkan oleh Firebase.
+                    </p>
+                    <p className="bg-white/5 p-2.5 rounded-xl text-slate-400 mt-1 font-sans">
+                      <strong>Cara mengatasi:</strong> Masuk ke <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Firebase Console</a> &rarr; Pilih Proyek &rarr; Menu <strong>Authentication</strong> &rarr; Tab <strong>Settings</strong> &rarr; Bagian <strong>Authorized domains</strong> &rarr; Klik <strong>Add domain</strong> &rarr; Masukkan domain Cloudflare Anda.
+                    </p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <h4 className="font-extrabold text-blue-400 uppercase tracking-wider text-[9px]">2. AGAR BISA DIAKSES BANYAK ORANG</h4>
+                    <p>
+                      Secara default, proyek Firebase baru berada dalam status pengujian (<strong>Testing</strong>). Dalam status ini, hanya orang yang didaftarkan sebagai "Test User" secara manual yang bisa login. Akun Google lain akan diblokir dengan pesan error.
+                    </p>
+                    <p className="bg-white/5 p-2.5 rounded-xl text-slate-400 mt-1 font-sans">
+                      <strong>Cara mengatasi:</strong> Masuk ke <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Google Cloud Console</a> &rarr; Pilih Proyek Anda &rarr; Pilih menu <strong>APIs & Services</strong> &rarr; <strong>OAuth Consent Screen</strong> &rarr; Pada bagian <strong>Publishing status</strong>, klik tombol <span className="text-white font-extrabold">"PUBLISH APP"</span> untuk mengubah status menjadi <strong>In Production</strong>.
+                    </p>
+                    <p className="text-slate-400 mt-1">
+                      <em>Catatan:</em> Setelah diproduksi, akun Google mana saja (Gmail / Drive) dapat masuk. Peringatan "Aplikasi tidak diverifikasi" bisa dilewati dengan mengklik <strong>Lanjutan (Advanced)</strong> &rarr; <strong>Buka [Nama Aplikasi] (tidak aman)</strong>.
+                    </p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <h4 className="font-extrabold text-blue-400 uppercase tracking-wider text-[9px]">3. RESET DATABASES / SINKRONISASI</h4>
+                    <p>
+                      Semua data catatan keuangan & iuran siswa disimpan aman secara otomatis per akun Google di Firestore database. Setiap orang yang login menggunakan akun Google-nya masing-masing akan memiliki database terpisah yang aman dan tersinkronisasi otomatis.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Custom Account Identity Card */}
+          <div className="bg-white/5 backdrop-blur-md border border-white/10 p-5 rounded-3xl space-y-4 shadow-xl">
+            <h3 className="font-extrabold text-base text-white flex items-center gap-1.5">
+              <User className="w-5 h-5 text-emerald-400" /> Profil &amp; Akun Kustom
+            </h3>
+            <p className="text-xs font-semibold text-slate-350 leading-relaxed text-slate-400">
+              Sesuaikan nama tampilan akun dan alamat email yang dipasang pada menu, share, dan laporan jika Google profile data Anda telah berubah.
+            </p>
+
+            <div className="space-y-3.5">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-405">Nama Akun / Lembaga (Tampilan Kustom)</label>
+                <input 
+                  type="text"
+                  placeholder={googleUser?.displayName || "Masukkan nama lembaga kustom"}
+                  value={customNameInput}
+                  onChange={e => setCustomNameInput(e.target.value)}
+                  className="w-full font-semibold bg-white/5 border border-white/10 p-3 rounded-2xl focus:outline-none text-white text-sm"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-405">Alamat Email Tampilan (Kustom)</label>
+                <input 
+                  type="email"
+                  placeholder={googleUser?.email || "Masukkan alamat email kustom"}
+                  value={customEmailInput}
+                  onChange={e => setCustomEmailInput(e.target.value)}
+                  className="w-full font-semibold bg-white/5 border border-white/10 p-3 rounded-2xl focus:outline-none text-white text-sm"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-1">
+                <button 
+                  onClick={() => {
+                    onDataChange({
+                      ...data,
+                      settings: {
+                        ...data.settings,
+                        customAccountName: customNameInput,
+                        customAccountEmail: customEmailInput
+                      },
+                      updatedAt: new Date().toISOString()
+                    });
+                    showToast('Profil akun kustom berhasil disimpan.');
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs px-5 py-3 rounded-2xl transition shadow-lg shadow-emerald-600/15 cursor-pointer"
+                >
+                  Simpan Profil
+                </button>
+
+                {(data.settings.customAccountName || data.settings.customAccountEmail) && (
+                  <button 
+                    onClick={() => {
+                      setCustomNameInput('');
+                      setCustomEmailInput('');
+                      onDataChange({
+                        ...data,
+                        settings: {
+                          ...data.settings,
+                          customAccountName: '',
+                          customAccountEmail: ''
+                        },
+                        updatedAt: new Date().toISOString()
+                      });
+                      showToast('Profil disetel ulang ke default Google.');
+                    }}
+                    className="bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 font-extrabold text-xs px-4 py-3 rounded-2xl transition cursor-pointer"
+                  >
+                    Reset ke Google
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {googleUser && onDeleteAccountData && (
+              <div className="pt-4 border-t border-white/5 mt-3 space-y-2">
+                <h4 className="font-extrabold text-slate-400 text-xs uppercase tracking-wider">Keamanan &amp; Hapus Akun</h4>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Jika Anda ingin menghapus seluruh rekaman iuran &amp; transaksi untuk akun Google yang terhubung saat ini dari database cloud Firestore, gunakan tombol di bawah.
+                </p>
+                <button
+                  onClick={onDeleteAccountData}
+                  className="w-full bg-rose-600/20 hover:bg-rose-600 text-rose-200 hover:text-white border border-rose-500/30 font-extrabold text-xs py-3 px-4 rounded-2xl transition flex items-center justify-center gap-2 shadow-lg shadow-rose-950/20 cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4" /> Hapus Seluruh Data Akun di Cloud &amp; Reset Aplikasi
                 </button>
               </div>
             )}

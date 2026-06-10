@@ -56,6 +56,8 @@ export interface AppSettings {
   reminderTime: string;
   lastBackup: string;
   noAds: boolean;
+  customAccountName?: string;
+  customAccountEmail?: string;
 }
 
 export interface FinanceData {
